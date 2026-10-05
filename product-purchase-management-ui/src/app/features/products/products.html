@@ -1,0 +1,284 @@
+<app-navbar></app-navbar>
+
+<div class="container py-4">
+
+    <div *ngIf="successMessage" class="alert alert-success
+           alert-dismissible fade show">
+
+        <i class="bi bi-check-circle me-2"></i>
+
+        {{ successMessage }}
+
+        <button type="button" class="btn-close" (click)="clearMessages()">
+        </button>
+
+    </div>
+
+    <div *ngIf="purchaseErrorMessage" class="alert alert-danger
+           alert-dismissible fade show">
+
+        <i class="bi bi-exclamation-triangle me-2">
+        </i>
+
+        {{ purchaseErrorMessage }}
+
+        <button type="button" class="btn-close" (click)="clearMessages()">
+        </button>
+
+    </div>
+
+    <div class="d-flex flex-column flex-md-row
+           justify-content-between
+           align-items-md-center
+           gap-3 mb-4">
+
+        <div>
+
+            <h2 class="mb-1">
+                Products
+            </h2>
+
+            <p class="text-muted mb-0">
+                Browse available products
+                and current stock.
+            </p>
+
+        </div>
+
+        <span class="badge bg-primary
+             fs-6 align-self-start">
+
+            {{ totalElements }}
+            product(s)
+
+        </span>
+
+    </div>
+
+    <div class="card search-card mb-4">
+
+        <div class="card-body">
+
+            <div class="row g-2">
+
+                <div class="col-md-8">
+
+                    <input type="text" class="form-control" placeholder="Search by product name" [(ngModel)]="search"
+                        (keyup.enter)="searchProducts()">
+
+                </div>
+
+                <div class="col-md-2">
+
+                    <button type="button" class="btn btn-primary w-100" (click)="searchProducts()">
+
+                        <i class="bi bi-search me-1"></i>
+
+                        Search
+
+                    </button>
+
+                </div>
+
+                <div class="col-md-2">
+
+                    <button type="button" class="btn btn-outline-secondary w-100" (click)="clearSearch()">
+
+                        Clear
+
+                    </button>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <div *ngIf="loading" class="text-center py-5">
+
+        <div class="spinner-border text-primary" role="status">
+
+            <span class="visually-hidden">
+                Loading products
+            </span>
+
+        </div>
+
+        <p class="text-muted mt-3">
+            Loading products...
+        </p>
+
+    </div>
+
+    <div *ngIf="errorMessage && !loading" class="alert alert-danger">
+
+        {{ errorMessage }}
+
+        <button type="button" class="btn btn-sm btn-danger ms-3" (click)="loadProducts()">
+
+            Retry
+
+        </button>
+
+    </div>
+
+    <div *ngIf="
+      !loading
+      && !errorMessage
+      && products.length === 0
+    " class="card empty-state">
+
+        <div class="card-body text-center py-5">
+
+            <i class="bi bi-box-seam
+               empty-icon">
+            </i>
+
+            <h4 class="mt-3">
+                No products found
+            </h4>
+
+            <p class="text-muted">
+                Try a different product name.
+            </p>
+
+        </div>
+
+    </div>
+
+    <div *ngIf="
+      !loading
+      && !errorMessage
+      && products.length > 0
+    " class="row g-4">
+
+        <div *ngFor="let product of products" class="col-sm-6 col-lg-4">
+
+            <div class="card product-card h-100">
+
+                <div class="card-body">
+
+                    <div class="d-flex
+                   justify-content-between
+                   align-items-start
+                   gap-2">
+
+                        <h5 class="card-title mb-2">
+
+                            {{ product.productName }}
+
+                        </h5>
+
+                        <span class="badge" [class.bg-success]="
+                product.quantity > 0
+              " [class.bg-danger]="
+                product.quantity === 0
+              ">
+
+                            {{
+                            product.quantity > 0
+                            ? 'In Stock'
+                            : 'Out of Stock'
+                            }}
+
+                        </span>
+
+                    </div>
+
+                    <p class="text-muted category">
+
+                        {{
+                        product.category
+                        || 'Uncategorized'
+                        }}
+
+                    </p>
+
+                    <p class="product-description">
+
+                        {{ product.description }}
+
+                    </p>
+
+                    <div class="d-flex
+                   justify-content-between
+                   align-items-end mt-4">
+
+                        <div>
+
+                            <div class="product-price">
+
+                                {{
+                                product.price
+                                | currency:
+                                'INR':
+                                'symbol':
+                                '1.2-2'
+                                }}
+
+                            </div>
+
+                            <small class="text-muted">
+
+                                Available:
+                                {{ product.quantity }}
+
+                            </small>
+
+                        </div>
+
+                        <button type="button" class="btn btn-success" [disabled]="product.quantity === 0"
+                            (click)="purchaseProduct(product)">
+
+                            Purchase
+
+                        </button>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <div *ngIf="
+      !loading
+      && totalPages > 0
+    " class="d-flex
+           justify-content-between
+           align-items-center
+           mt-4">
+
+        <button type="button" class="btn btn-outline-primary" [disabled]="first" (click)="previousPage()">
+
+            <i class="bi bi-chevron-left me-1">
+            </i>
+
+            Previous
+
+        </button>
+
+        <span class="text-muted">
+
+            Page {{ currentPage + 1 }}
+            of {{ totalPages }}
+
+        </span>
+
+        <button type="button" class="btn btn-outline-primary" [disabled]="last" (click)="nextPage()">
+
+            Next
+
+            <i class="bi bi-chevron-right ms-1">
+            </i>
+
+        </button>
+
+    </div>
+
+</div>

@@ -1,0 +1,322 @@
+<app-navbar></app-navbar>
+
+<div class="container py-4">
+
+    <div *ngIf="successMessage" class="alert alert-success
+           alert-dismissible fade show">
+
+        <i class="bi bi-check-circle me-2"></i>
+
+        {{ successMessage }}
+
+        <button type="button" class="btn-close" (click)="clearMessages()">
+        </button>
+
+    </div>
+
+    <div *ngIf="errorMessage" class="alert alert-danger
+           alert-dismissible fade show">
+
+        <i class="bi bi-exclamation-triangle me-2">
+        </i>
+
+        {{ errorMessage }}
+
+        <button type="button" class="btn-close" (click)="clearMessages()">
+        </button>
+
+    </div>
+
+    <div class="card shadow">
+
+        <div class="card-header">
+
+            <h3 class="mb-0">
+
+                {{
+                editMode
+                ? 'Edit Product'
+                : 'Add Product'
+                }}
+
+            </h3>
+
+        </div>
+
+        <div class="card-body">
+
+            <form [formGroup]="productForm" (ngSubmit)="saveProduct()">
+
+                <div class="mb-3">
+
+                    <label class="form-label">
+                        Product Name
+                    </label>
+
+                    <input class="form-control" formControlName="productName">
+
+                </div>
+
+                <div class="mb-3">
+
+                    <label class="form-label">
+                        Description
+                    </label>
+
+                    <textarea class="form-control" rows="4" formControlName="description">
+          </textarea>
+
+                </div>
+
+                <div class="row">
+
+                    <div class="col-md-6">
+
+                        <label class="form-label">
+                            Price
+                        </label>
+
+                        <input type="number" class="form-control" formControlName="price">
+
+                    </div>
+
+                    <div class="col-md-6">
+
+                        <label class="form-label">
+                            Quantity
+                        </label>
+
+                        <input type="number" class="form-control" formControlName="quantity">
+
+                    </div>
+
+                </div>
+
+                <div class="mt-3">
+
+                    <label class="form-label">
+                        Category
+                    </label>
+
+                    <input class="form-control" formControlName="category">
+
+                </div>
+
+                <div class="mt-3">
+
+                    <label class="form-label">
+                        Image Path
+                    </label>
+
+                    <input class="form-control" formControlName="imagePath">
+
+                    <small class="text-muted">
+                        Use a URL. Maximum 500 characters.
+                    </small>
+
+                </div>
+
+                <div class="mt-4 d-flex gap-2">
+
+                    <button type="submit" class="btn" [class.btn-success]="!editMode" [class.btn-primary]="editMode">
+
+                        {{
+                        editMode
+                        ? 'Update Product'
+                        : 'Add Product'
+                        }}
+
+                    </button>
+
+                    <button *ngIf="editMode" type="button" class="btn btn-outline-secondary" (click)="cancelEdit()">
+
+                        Cancel
+
+                    </button>
+
+                </div>
+
+            </form>
+
+        </div>
+
+    </div>
+
+    <div class="card shadow mt-4">
+
+        <div class="card-header">
+
+            <h3 class="mb-0">
+                Product Inventory
+            </h3>
+
+        </div>
+
+        <div class="card-body">
+
+            <div class="row mb-3">
+
+                <div class="col-md-10">
+
+                    <input type="text" class="form-control" placeholder="Search Product" [(ngModel)]="search"
+                        (keyup.enter)="searchProducts()">
+
+                </div>
+
+                <div class="col-md-2">
+
+                    <button class="btn btn-primary w-100" (click)="searchProducts()">
+
+                        Search
+
+                    </button>
+
+                </div>
+
+            </div>
+
+            <div *ngIf="loading" class="text-center py-3">
+
+                Loading products...
+
+            </div>
+
+            <div *ngIf="
+          !loading
+          &&
+          products.length === 0
+        " class="text-center py-4
+               text-muted">
+
+                No products found.
+
+            </div>
+
+            <div *ngIf="
+          !loading
+          &&
+          products.length > 0
+        " class="table-responsive">
+
+                <table class="table table-bordered
+                 table-hover align-middle">
+
+                    <thead class="table-light">
+
+                        <tr>
+
+                            <th>ID</th>
+
+                            <th>Name</th>
+
+                            <th>Category</th>
+
+                            <th>Price</th>
+
+                            <th>Quantity</th>
+
+                            <th>Status</th>
+
+                            <th>Actions</th>
+
+                        </tr>
+
+                    </thead>
+
+                    <tbody>
+
+                        <tr *ngFor="let product of products">
+
+                            <td>
+
+                                {{ product.productId }}
+
+                            </td>
+
+                            <td>
+
+                                {{ product.productName }}
+
+                            </td>
+
+                            <td>
+
+                                {{
+                                product.category
+                                || 'Uncategorized'
+                                }}
+
+                            </td>
+
+                            <td>
+
+                                {{
+                                product.price
+                                | currency:
+                                'INR':
+                                'symbol':
+                                '1.2-2'
+                                }}
+
+                            </td>
+
+                            <td>
+
+                                {{ product.quantity }}
+
+                            </td>
+
+                            <td>
+
+                                <span class="badge" [class.bg-success]="product.active"
+                                    [class.bg-danger]="!product.active">
+
+                                    {{
+                                    product.active
+                                    ? 'Active'
+                                    : 'Inactive'
+                                    }}
+
+                                </span>
+
+                            </td>
+
+                            <td>
+
+                                <div class="d-flex gap-2">
+
+                                    <button type="button" class="btn btn-sm
+                           btn-outline-primary" (click)="editProduct(product)">
+
+                                        Edit
+
+                                    </button>
+
+                                    <button type="button" class="btn btn-sm" [class.btn-outline-danger]="product.active"
+                                        [class.btn-outline-success]="!product.active" (click)="toggleStatus(product)">
+
+                                        {{
+                                        product.active
+                                        ? 'Deactivate'
+                                        : 'Activate'
+                                        }}
+
+                                    </button>
+
+                                </div>
+
+                            </td>
+
+                        </tr>
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>

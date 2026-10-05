@@ -1,0 +1,42 @@
+.filter-card {
+    border: none;
+    border-radius: 14px;
+    box-shadow:
+        0 4px 18px rgba(0, 0, 0, 0.08);
+}
+
+.purchase-card {
+    border: none;
+    border-radius: 14px;
+    box-shadow:
+        0 4px 18px rgba(0, 0, 0, 0.08);
+    overflow: hidden;
+}
+
+.purchase-card .card-header {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #e9ecef;
+    padding: 1rem 1.25rem;
+}
+
+.purchase-total {
+    color: #0d6efd;
+    font-size: 1.2rem;
+    font-weight: 700;
+}
+
+.empty-state {
+    border: 2px dashed #dee2e6;
+    border-radius: 14px;
+}
+
+.empty-icon {
+    color: #6c757d;
+    font-size: 3rem;
+}
+
+.table thead th {
+    background-color: #f8f9fa;
+    color: #495057;
+    white-space: nowrap;
+}

@@ -1,0 +1,36 @@
+.profile-card {
+    border: none;
+    border-radius: 14px;
+    box-shadow:
+        0 4px 18px rgba(0, 0, 0, 0.08);
+}
+
+.avatar {
+    width: 90px;
+    height: 90px;
+    border-radius: 50%;
+    background-color: #0d6efd;
+    color: #ffffff;
+    font-size: 2rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.9rem 0;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.info-label {
+    color: #6c757d;
+    font-weight: 500;
+}
+
+.info-value {
+    color: #212529;
+    font-weight: 600;
+}
