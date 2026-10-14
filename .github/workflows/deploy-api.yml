@@ -1,0 +1,118 @@
+name: Deploy API to EC2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "product-purchase-management/**"
+      - ".github/workflows/deploy-api.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-api
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-south-1
+  APP_DIR: product-purchase-management
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # ---------- 1. Build ----------
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: corretto
+          java-version: "21"
+          cache: maven
+
+      - name: Build JAR
+        working-directory: ${{ env.APP_DIR }}
+        run: |
+          chmod +x mvnw
+          ./mvnw -B clean package -DskipTests
+          cp target/*-SNAPSHOT.jar "$GITHUB_WORKSPACE/app.jar"
+          ls -lh "$GITHUB_WORKSPACE/app.jar"
+
+      # ---------- 2. Open SSH for this runner only ----------
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Allow this runner's IP on port 22
+        id: runner_ip
+        run: |
+          IP=$(curl -s https://checkip.amazonaws.com)
+          echo "ip=$IP" >> "$GITHUB_OUTPUT"
+          aws ec2 authorize-security-group-ingress \
+            --group-id "${{ secrets.EC2_SG_ID }}" \
+            --protocol tcp --port 22 --cidr "$IP/32"
+
+      # ---------- 3. Deploy ----------
+      - name: Copy JAR and restart service
+        id: deploy
+        run: |
+          echo "${{ secrets.EC2_SSH_KEY }}" > key.pem
+          chmod 600 key.pem
+          SSH_OPTS="-i key.pem -o StrictHostKeyChecking=no -o ConnectTimeout=20"
+
+          scp $SSH_OPTS app.jar ec2-user@${{ secrets.EC2_HOST }}:/opt/ppm/app.jar.new
+
+          ssh $SSH_OPTS ec2-user@${{ secrets.EC2_HOST }} '
+            set -e
+            cd /opt/ppm
+            if [ -f app.jar ]; then cp app.jar app.jar.bak; fi
+            mv app.jar.new app.jar
+            sudo systemctl restart ppm
+          '
+
+      # ---------- 4. Check it started ----------
+      - name: Health check
+        run: |
+          for i in $(seq 1 24); do
+            if curl -fsS "http://${{ secrets.EC2_HOST }}:8080/v3/api-docs" > /dev/null; then
+              echo "API is up"
+              exit 0
+            fi
+            echo "Waiting for API... ($i/24)"
+            sleep 5
+          done
+          echo "API did not respond within 2 minutes"
+          exit 1
+
+      - name: Roll back to previous JAR
+        if: failure() && steps.deploy.outcome == 'success'
+        run: |
+          ssh -i key.pem -o StrictHostKeyChecking=no ec2-user@${{ secrets.EC2_HOST }} '
+            cd /opt/ppm
+            if [ -f app.jar.bak ]; then
+              mv app.jar.bak app.jar
+              sudo systemctl restart ppm
+              echo "Rolled back to previous version"
+            fi
+          '
+
+      # ---------- 5. Always close SSH again ----------
+      - name: Remove this runner's IP from port 22
+        if: always() && steps.runner_ip.outputs.ip != ''
+        run: |
+          aws ec2 revoke-security-group-ingress \
+            --group-id "${{ secrets.EC2_SG_ID }}" \
+            --protocol tcp --port 22 \
+            --cidr "${{ steps.runner_ip.outputs.ip }}/32" || true
+
+      - name: Delete key file
+        if: always()
+        run: rm -f key.pem
