@@ -1,0 +1,137 @@
+name: Deploy UI to EC2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "product-purchase-management-ui/**"
+      - ".github/workflows/deploy-ui.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-ec2
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-south-1
+  UI_DIR: product-purchase-management-ui
+  DIST_DIR: product-purchase-management-ui/dist/product-purchase-management-ui/browser
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # ---------- 1. Build ----------
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: ${{ env.UI_DIR }}/package-lock.json
+
+      - name: Install packages
+        working-directory: ${{ env.UI_DIR }}
+        run: npm ci
+
+      - name: Build Angular (production)
+        working-directory: ${{ env.UI_DIR }}
+        run: npx ng build
+
+      - name: Check build uses relative API URL
+        run: |
+          if grep -q "localhost:8080" ${{ env.DIST_DIR }}/*.js; then
+            echo "Production build still points to localhost:8080"
+            exit 1
+          fi
+          echo "API URL check passed"
+
+      - name: Pack build output
+        run: |
+          tar -czf ui.tar.gz -C "${{ env.DIST_DIR }}" .
+          ls -lh ui.tar.gz
+
+      # ---------- 2. Open SSH for this runner only ----------
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Allow this runner's IP on port 22
+        id: runner_ip
+        run: |
+          IP=$(curl -s https://checkip.amazonaws.com)
+          echo "ip=$IP" >> "$GITHUB_OUTPUT"
+          aws ec2 authorize-security-group-ingress \
+            --group-id "${{ secrets.EC2_SG_ID }}" \
+            --protocol tcp --port 22 --cidr "$IP/32"
+
+      # ---------- 3. Deploy ----------
+      - name: Copy files and switch to new version
+        id: deploy
+        run: |
+          echo "${{ secrets.EC2_SSH_KEY }}" > key.pem
+          chmod 600 key.pem
+          SSH_OPTS="-i key.pem -o StrictHostKeyChecking=no -o ConnectTimeout=20"
+
+          scp $SSH_OPTS ui.tar.gz ec2-user@${{ secrets.EC2_HOST }}:/tmp/ui.tar.gz
+
+          ssh $SSH_OPTS ec2-user@${{ secrets.EC2_HOST }} '
+            set -e
+            sudo rm -rf /var/www/ppm.new
+            sudo mkdir -p /var/www/ppm.new
+            sudo tar -xzf /tmp/ui.tar.gz -C /var/www/ppm.new
+            sudo rm -rf /var/www/ppm.bak
+            if [ -d /var/www/ppm ]; then sudo mv /var/www/ppm /var/www/ppm.bak; fi
+            sudo mv /var/www/ppm.new /var/www/ppm
+            sudo chown -R ec2-user:ec2-user /var/www/ppm
+            sudo chmod -R a+rX /var/www/ppm
+            rm -f /tmp/ui.tar.gz
+          '
+
+      # ---------- 4. Check it is served ----------
+      - name: Health check
+        run: |
+          for i in $(seq 1 12); do
+            if curl -fsS "http://${{ secrets.EC2_HOST }}/" | grep -q "<app-root"; then
+              echo "Website is up"
+              exit 0
+            fi
+            echo "Waiting for website... ($i/12)"
+            sleep 5
+          done
+          echo "Website check failed"
+          exit 1
+
+      - name: Roll back to previous version
+        if: failure() && steps.deploy.outcome == 'success'
+        run: |
+          ssh -i key.pem -o StrictHostKeyChecking=no ec2-user@${{ secrets.EC2_HOST }} '
+            if [ -d /var/www/ppm.bak ]; then
+              sudo rm -rf /var/www/ppm
+              sudo mv /var/www/ppm.bak /var/www/ppm
+              echo "Rolled back to previous version"
+            fi
+          '
+
+      # ---------- 5. Always close SSH again ----------
+      - name: Remove this runner's IP from port 22
+        if: always() && steps.runner_ip.outputs.ip != ''
+        run: |
+          aws ec2 revoke-security-group-ingress \
+            --group-id "${{ secrets.EC2_SG_ID }}" \
+            --protocol tcp --port 22 \
+            --cidr "${{ steps.runner_ip.outputs.ip }}/32" || true
+
+      - name: Delete key file
+        if: always()
+        run: rm -f key.pem
+        
