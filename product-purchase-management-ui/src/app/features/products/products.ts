@@ -69,6 +69,8 @@ export class Products implements OnInit {
 
   purchaseErrorMessage = '';
 
+  quantities: Record<number, number> = {};
+
   constructor(
     private productService: ProductService,
     private purchaseService: PurchaseService,
@@ -200,56 +202,30 @@ export class Products implements OnInit {
 
     this.clearMessages();
 
-    const quantityText =
-      prompt(
-        `Enter quantity for `
-        + `"${product.productName}" `
-        + `(Available: ${product.quantity})`
-      );
-
-    if (!quantityText) {
-      return;
-    }
-
     const quantity =
-      Number(quantityText);
+      Number(this.quantities[product.productId] ?? 1);
 
     if (
-      isNaN(quantity)
-      ||
       !Number.isInteger(quantity)
       ||
       quantity <= 0
     ) {
-
       this.showPurchaseError(
-        'Quantity must be a whole '
-        + 'number greater than zero'
+        'Quantity must be a whole number greater than zero'
       );
-
       return;
-
     }
 
     if (quantity > product.quantity) {
-
       this.showPurchaseError(
-        `Only ${product.quantity} `
-        + `item(s) are available`
+        `Only ${product.quantity} item(s) are available`
       );
-
       return;
-
     }
 
-    const request:
-      PurchaseRequest = {
-
-      productId:
-        product.productId,
-
+    const request: PurchaseRequest = {
+      productId: product.productId,
       quantity
-
     };
 
     this.purchaseService
@@ -263,6 +239,8 @@ export class Products implements OnInit {
             || 'Purchase completed successfully'
           );
 
+          this.quantities[product.productId] = 1;
+
           this.loadProducts();
 
         },
@@ -274,8 +252,7 @@ export class Products implements OnInit {
           this.showPurchaseError(
             this.extractError(
               error,
-              'Purchase failed. '
-              + 'Please try again.'
+              'Purchase failed. Please try again.'
             )
           );
 
