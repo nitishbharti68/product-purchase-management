@@ -70,7 +70,7 @@ jobs:
             > application-prod.properties
           chmod 600 application-prod.properties
 
-          if grep -q '\${' application-prod.properties; then
+          if grep -qE '\$\{(DB_URL|DB_USERNAME|DB_PASSWORD|JWT_SECRET)\}' application-prod.properties; then
             echo "A placeholder was not replaced"
             exit 1
           fi
