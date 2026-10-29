@@ -1,0 +1,12 @@
+# Production configuration.
+# Values in ${...} are filled in by GitHub Actions from the
+# "production" environment secrets. Never put real values here.
+
+spring.datasource.url=${DB_URL}
+spring.datasource.username=${DB_USERNAME}
+spring.datasource.password=${DB_PASSWORD}
+
+jwt.secret=${JWT_SECRET}
+jwt.expiration=1800000
+
+spring.jpa.show-sql=false

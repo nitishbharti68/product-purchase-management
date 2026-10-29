@@ -18,10 +18,12 @@ concurrency:
 env:
   AWS_REGION: ap-south-1
   APP_DIR: product-purchase-management
+  PROPS_TEMPLATE: product-purchase-management/deploy/application-prod.properties.template
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    environment: production
 
     steps:
       # ---------- 1. Build ----------
@@ -43,7 +45,39 @@ jobs:
           cp target/*-SNAPSHOT.jar "$GITHUB_WORKSPACE/app.jar"
           ls -lh "$GITHUB_WORKSPACE/app.jar"
 
-      # ---------- 2. Open SSH for this runner only ----------
+      # ---------- 2. Inject environment secrets ----------
+      - name: Inject production secrets into properties file
+        env:
+          DB_URL: ${{ secrets.DB_URL }}
+          DB_USERNAME: ${{ secrets.DB_USERNAME }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        run: |
+          if [ ! -f "$PROPS_TEMPLATE" ]; then
+            echo "Template not found: $PROPS_TEMPLATE"
+            exit 1
+          fi
+
+          for name in DB_URL DB_USERNAME DB_PASSWORD JWT_SECRET; do
+            if [ -z "${!name}" ]; then
+              echo "Environment secret $name is missing in the 'production' environment"
+              exit 1
+            fi
+          done
+
+          envsubst '${DB_URL} ${DB_USERNAME} ${DB_PASSWORD} ${JWT_SECRET}' \
+            < "$PROPS_TEMPLATE" \
+            > application-prod.properties
+          chmod 600 application-prod.properties
+
+          if grep -q '\${' application-prod.properties; then
+            echo "A placeholder was not replaced"
+            exit 1
+          fi
+
+          echo "Properties file created (values hidden)"
+
+      # ---------- 3. Open SSH for this runner only ----------
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -60,8 +94,8 @@ jobs:
             --group-id "${{ secrets.EC2_SG_ID }}" \
             --protocol tcp --port 22 --cidr "$IP/32"
 
-      # ---------- 3. Deploy ----------
-      - name: Copy JAR and restart service
+      # ---------- 4. Deploy ----------
+      - name: Copy JAR and properties, restart service
         id: deploy
         run: |
           echo "${{ secrets.EC2_SSH_KEY }}" > key.pem
@@ -69,16 +103,30 @@ jobs:
           SSH_OPTS="-i key.pem -o StrictHostKeyChecking=no -o ConnectTimeout=20"
 
           scp $SSH_OPTS app.jar ec2-user@${{ secrets.EC2_HOST }}:/opt/ppm/app.jar.new
+          scp $SSH_OPTS application-prod.properties ec2-user@${{ secrets.EC2_HOST }}:/opt/ppm/application-prod.properties.new
 
           ssh $SSH_OPTS ec2-user@${{ secrets.EC2_HOST }} '
             set -e
             cd /opt/ppm
+            mkdir -p config
+            chmod 700 config
+
             if [ -f app.jar ]; then cp app.jar app.jar.bak; fi
+            if [ -f config/application-prod.properties ]; then
+              cp config/application-prod.properties config/application-prod.properties.bak
+            fi
+
             mv app.jar.new app.jar
+            mv application-prod.properties.new config/application-prod.properties
+            chmod 600 config/application-prod.properties
+            if [ -f config/application-prod.properties.bak ]; then
+              chmod 600 config/application-prod.properties.bak
+            fi
+
             sudo systemctl restart ppm
           '
 
-      # ---------- 4. Check it started ----------
+      # ---------- 5. Check it started ----------
       - name: Health check
         run: |
           for i in $(seq 1 24); do
@@ -92,19 +140,22 @@ jobs:
           echo "API did not respond within 2 minutes"
           exit 1
 
-      - name: Roll back to previous JAR
+      - name: Roll back to previous version
         if: failure() && steps.deploy.outcome == 'success'
         run: |
           ssh -i key.pem -o StrictHostKeyChecking=no ec2-user@${{ secrets.EC2_HOST }} '
             cd /opt/ppm
             if [ -f app.jar.bak ]; then
               mv app.jar.bak app.jar
-              sudo systemctl restart ppm
-              echo "Rolled back to previous version"
             fi
+            if [ -f config/application-prod.properties.bak ]; then
+              mv config/application-prod.properties.bak config/application-prod.properties
+            fi
+            sudo systemctl restart ppm
+            echo "Rolled back to previous version"
           '
 
-      # ---------- 5. Always close SSH again ----------
+      # ---------- 6. Always close SSH and clean up ----------
       - name: Remove this runner's IP from port 22
         if: always() && steps.runner_ip.outputs.ip != ''
         run: |
@@ -113,6 +164,6 @@ jobs:
             --protocol tcp --port 22 \
             --cidr "${{ steps.runner_ip.outputs.ip }}/32" || true
 
-      - name: Delete key file
+      - name: Delete key and properties files
         if: always()
-        run: rm -f key.pem
+        run: rm -f key.pem application-prod.properties
